@@ -14,7 +14,7 @@ import pprint
 
 dbFileName = "usernameCrawler.pickle"
 htmlFileName = "userlist.html"
-cacheTimeout = 10 * 3600
+cacheTimeout = 72 * 3600
 
 try:
     from bitcoinrpc.authproxy import AuthServiceProxy
@@ -107,33 +107,48 @@ def outputHtmlUserlist(fname, db, keys):
 
 
 candidates = set(db.usernames.keys())
-openSet = ['black_puppydog']
 closedSet = set()
 loadedCounter = 0
 
 try:
     while len(candidates) > 0 or len(openSet) > 0:
-        while len(openSet) > 0:
+        root = candidates.pop()
+        print "STARTING NEW BFS FROM USER ", root
+        openSet = [root]
+        openCount=1
+        while openCount > 0:
             u = openSet.pop(0)
-            print("dealing with {0}".format(u))
+            # u = openSet.pop(random.randint(0, len(openSet)-1))
+            try:
+                print "dealing with ", u
+            except UnicodeEncodeError:
+                print "cannot print user info since Unicode error..."
             closedSet.add(u)
             candidates.discard(u)
             now = time.time()
             actualWorkDone = 'updateTime' not in db.usernames[u] or db.usernames[u]['updateTime'] + cacheTimeout < now
             if actualWorkDone:
-
-                print "getting profile for", u, "..."
+                try:
+                    print "getting profile for", u, "..."
+                except UnicodeEncodeError:
+                    print "cannot print user info since Unicode error..."
                 d = twister.dhtget(u, "profile", "s")
 
                 if len(d) == 1 and d[0].has_key("p") and d[0]["p"].has_key("v"):
                     db.usernames[u] = d[0]["p"]["v"]
 
-                print "getting avatar for", u, "..."
+                try:
+                    print "getting avatar for", u, "..."
+                except UnicodeEncodeError:
+                    print "cannot print user info since Unicode error..."
                 d = twister.dhtget(u, "avatar", "s")
                 if len(d) == 1 and d[0].has_key("p") and d[0]["p"].has_key("v"):
                     db.usernames[u]['avatar'] = d[0]["p"]["v"]
 
-                print "getting following1 for", u, "..."
+                try:
+                    print "getting following1 for", u, "..."
+                except UnicodeEncodeError:
+                    print "cannot print user info since Unicode error..."
                 d = twister.dhtget(u, "following1", "s")
                 if len(d) == 1 and d[0].has_key("p") and d[0]["p"].has_key("v"):
                     db.usernames[u]['following'] = [d[0]["p"]["v"]]
@@ -160,6 +175,8 @@ try:
                 print("{0} users with info".format(len([u for u in keys if db.usernames[u]['updateTime'] > 0 and len(db.usernames[u]) > 2 ])))
                 outputHtmlUserlist(htmlFileName, db, keys)
             print
+            openCount = len(openSet)
+            print "open nodes: ", openCount
 
 
 # try:
@@ -197,5 +214,5 @@ print "Generating", htmlFileName, "..."
 keys = db.usernames.keys()
 keys.sort()  # sorted by username
 print(str(len(keys)) + " users in database")
-print("{0} users with info".format(len([u for u in keys if db.usernames[u]['updateTime'] > 0 and len(db.usernames[u]) > 2])))
+print("{0} users with info".format(len([u for u in keys if db.usernames[u]['updateTime'] > 0 and len(db.usernames[u]) > 2   ])))
 outputHtmlUserlist(htmlFileName, db, keys)
