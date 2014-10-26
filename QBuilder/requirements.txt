@@ -1,0 +1,3 @@
+git+git@github.com:black-puppydog/python-bitcoinrpc.git@p34-compatablity#egg=python-bitcoinrpc
+cassandra-driver
+
