@@ -19,8 +19,6 @@ handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(
 log.addHandler(handler)
 
 KEYSPACE = "queuebuilder"
-
-dbFileName = "usernameCrawler.pickle"
 serverUrl = "http://user:pwd@127.0.0.1:28332"
 
 
@@ -60,14 +58,14 @@ def setup_cassandra_schema(session):
 
 def print_db_stats(cassy):
     result = cassy.execute("SELECT COUNT(*) FROM user_indexing_state")
-    print("User Count: %i"% result[0])
+    print("User Count: %i" % result[0])
 
+    # todo: fix this shit!
     bh = cassy.execute("SELECT * FROM last_scanned_block")[0]
     print("Last scanned block: %s" % bh[1])
 
 
 def main():
-
     try:
         from bitcoinrpc.authproxy import AuthServiceProxy
     except ImportError as exc:
@@ -78,8 +76,8 @@ def main():
     twister = AuthServiceProxy(serverUrl)
 
     log.debug("Connect to cassandra...")
-    # todo: change this back to cluster = Cluster(['127.0.0.1]) once we figure out how to talk to the spotify cassandra docker container
-    cluster = Cluster(['172.17.0.4'])
+    # todo: change this back to cluster = Cluster(['127.0.0.1']) once we figure out how to talk to the spotify cassandra docker container
+    cluster = Cluster(['127.0.0.1', '172.17.0.13'])
     cassy = cluster.connect()
 
     # do a full scan if we don't get any hash
@@ -111,7 +109,7 @@ def read_block(block_hash, cassy, twister):
     print("Block height: %i" % block["height"], end='')
 
     usernames = block["usernames"]
-    # todo: this should be changed iff we use more than one nod ein cassy's cluster :P
+    # todo: this should be changed iff we use more than one node in cassy's cluster :P
     batch = BatchStatement(consistency_level=ConsistencyLevel.ANY)
     for u in usernames:
         batch.add(insert_user, (u, -1, datetime.datetime.utcfromtimestamp(0)))
@@ -122,7 +120,6 @@ def read_block(block_hash, cassy, twister):
 
 
 def full_blockchain_scan(cassy, twister):
-
     setup_cassandra_schema(cassy)
 
     nextHash = twister.getblockhash(0)
@@ -135,6 +132,7 @@ def full_blockchain_scan(cassy, twister):
             nextHash = block["nextblockhash"]
         else:
             break
+
 
 if __name__ == "__main__":
     main()
