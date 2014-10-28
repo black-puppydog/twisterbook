@@ -1,0 +1,4 @@
+PyMySQL==0.6.2
+celery==3.1.16
+python-bitcoinrpc==0.1
+
