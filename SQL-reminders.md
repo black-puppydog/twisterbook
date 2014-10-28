@@ -29,8 +29,14 @@ CREATE TABLE posts (
     reply_to BIGINT NULL,
     rt_of BIGINT NULL,
     json MEDIUMTEXT CHARACTER SET utf8 COLLATE utf8_bin,
-
     FOREIGN KEY (userid) REFERENCES users(id),
     FOREIGN KEY (reply_to) REFERENCES posts(id),
     FOREIGN KEY (rt_of) REFERENCES posts(id)
 );
+
+CREATE TABLE blocks(
+    height BIGINT PRIMARY KEY,
+    hash CHAR(65) NOT NULL,
+    user_registrations INT NOT NULL
+);
+

@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
 import datetime
+import pymysql
 
 __author__ = 'daan wynen'
 
@@ -8,9 +9,6 @@ __author__ = 'daan wynen'
 
 import logging
 import sys
-from cassandra import ConsistencyLevel
-from cassandra.cluster import Cluster
-from cassandra.query import SimpleStatement, BatchStatement
 
 log = logging.getLogger()
 log.setLevel('DEBUG')
@@ -18,50 +16,24 @@ handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 log.addHandler(handler)
 
-KEYSPACE = "queuebuilder"
-serverUrl = "http://user:pwd@127.0.0.1:28332"
+
+from QBuilder.LoginData import *
 
 
-def delete_all(cassy):
-    cassy.execute("DROP KEYSPACE " + KEYSPACE)
+def delete_all(db):
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM posts;")
+    cursor.execute("DELETE FROM blocks;")
+    cursor.execute("DELETE FROM users;")
+    db.commit()
 
-
-def setup_cassandra_schema(session):
-    log.info("creating keyspace...")
-    session.execute("""
-        CREATE KEYSPACE IF NOT EXISTS %s
-        WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': '2' }
-        """ % KEYSPACE)
-
-    log.info("setting keyspace...")
-    session.set_keyspace(KEYSPACE)
-
-    log.info("creating table last_scanned_block")
-    session.execute("""
-        CREATE TABLE IF NOT EXISTS last_scanned_block (
-            fake_id int,
-            block_hash text,
-            PRIMARY KEY (fake_id)
-        )
-        """)
-
-    log.info("creating table user_indexing_data")
-    session.execute("""
-        CREATE TABLE IF NOT EXISTS user_indexing_state (
-            username text,
-            last_indexed_k int,
-            last_indexing_time timestamp,
-            PRIMARY KEY (username)
-        )
-        """)
-
-
-def print_db_stats(cassy):
-    result = cassy.execute("SELECT COUNT(*) FROM user_indexing_state")
+def print_db_stats(db):
+    cursor = db.cursor()
+    result = cursor.execute("SELECT COUNT(*) FROM users")
     print("User Count: %i" % result[0])
 
     # todo: fix this shit!
-    bh = cassy.execute("SELECT * FROM last_scanned_block")[0]
+    bh = cursor.execute("SELECT * FROM last_scanned_block")[0]
     print("Last scanned block: %s" % bh[1])
 
 
@@ -73,55 +45,50 @@ def main():
         exit(-1)
 
     log.debug("Creating twister connection...")
-    twister = AuthServiceProxy(serverUrl)
+    twister = AuthServiceProxy(TWISTER_RPC_URL)
 
-    log.debug("Connect to cassandra...")
-    # todo: change this back to cluster = Cluster(['127.0.0.1']) once we figure out how to talk to the spotify cassandra docker container
-    cluster = Cluster(['127.0.0.1', '172.17.0.13'])
-    cassy = cluster.connect()
+    log.debug("Connect to database...")
+    conn = pymysql.connect(
+        host=MYSQL_HOSTNAME,
+        port=MYSQL_PORT, user=MYSQL_USER,
+        passwd=MYSQL_PASSWORD,
+        db=MYSQL_DATABASE)
 
     # do a full scan if we don't get any hash
     if len(sys.argv) == 1 or sys.argv[1] == '--init':
-        full_blockchain_scan(cassy, twister)
+        full_blockchain_scan(conn, twister)
         return
 
-    cassy.set_keyspace(KEYSPACE)
     if sys.argv[1] == '--stats':
-        print_db_stats(cassy)
+        print_db_stats(conn)
 
     if sys.argv[1] == '--reset':
-        delete_all(cassy)
+        delete_all(conn)
 
     if sys.argv[1] == '--up-to-block':
         block_hash = sys.argv[2]
         print("will scan from last known block up to the new block with hash %s" % block_hash)
+        # todo: do that thing
 
 
-def read_block(block_hash, cassy, twister):
-    insert_user = cassy.prepare("""INSERT INTO user_indexing_state (
-                username,
-                last_indexed_k,
-                last_indexing_time) VALUES (?, ?, ?)""")
-    update_last_block = cassy.prepare("""
-                INSERT INTO last_scanned_block (fake_id, block_hash)
-                VALUES (?, ?)""")
+def read_block(block_hash, conn, twister):
 
     block = twister.getblock(block_hash)
     print("Block height: %i" % block["height"], end='')
-
     usernames = block["usernames"]
-    # todo: this should be changed iff we use more than one node in cassy's cluster :P
-    batch = BatchStatement(consistency_level=ConsistencyLevel.ANY)
+
+    cur = conn.cursor()
     for u in usernames:
-        batch.add(insert_user, (u, -1, datetime.datetime.utcfromtimestamp(0)))
-    batch.add(update_last_block, (0, block_hash,))
-    cassy.execute(batch)
+        cur.execute("INSERT IGNORE INTO users(username, last_indexed_k, last_indexed_time, json) "
+                    "VALUES (%s,%s,%s,%s)", (u, -1, -1, "{}"))
+    cur.execute("INSERT IGNORE INTO blocks(height, hash, user_registrations) "
+                "VALUES (%s,%s,%s)", (int(block['height']), block_hash, len(usernames)))
+    conn.commit()
     print(" contains %i user registrations." % len(usernames))
     return block
 
 
 def full_blockchain_scan(cassy, twister):
-    setup_cassandra_schema(cassy)
 
     nextHash = twister.getblockhash(0)
 
