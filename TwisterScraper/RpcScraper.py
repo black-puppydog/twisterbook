@@ -1,8 +1,17 @@
+from __future__ import absolute_import
 from datetime import datetime
 from bitcoinrpc.authproxy import AuthServiceProxy
-from TwisterScraper.Dispatcher import Dispatcher
+from TwisterScraper.celery import app
 
 __author__ = 'daan'
+
+# todo: once we understand celery this should instead call the actual RpcScraper and do actual work!
+
+
+@app.task
+def dummy_scraper_task(username, last_k):
+    scraper = RpcScraper()
+    return scraper.refresh_user(username, last_k)
 
 
 class RpcScraper:
@@ -80,14 +89,4 @@ class RpcScraper:
                 break
         result['following'] = list(result['following'])
         result["updated_time"] = datetime.now()
-
-if __name__=='__main__':
-    scraper = RpcScraper()
-
-from TwisterScraper.Dispatcher import app
-# todo: once we understand celery this should instead call the actual RpcScraper and do actual work!
-@app.task
-def dummy_scraper_task(username, last_k):
-    scraper = RpcScraper()
-    return scraper.refresh_user(username, last_k)
 

@@ -1,19 +1,16 @@
+#! python3
+
 import pymysql
 from LoginData import *
-from TwisterScraper import RpcScraper
 
 from datetime import datetime
 import logging
+from TwisterScraper.RpcScraper import dummy_scraper_task
 
 __author__ = 'daan'
 
-from celery import Celery
-
-app = Celery('RpcScraper', broker=RABBITMQ_PUBLISHER_URL)
-
 
 class Dispatcher:
-
     # todo: change the cache timeout to something more realistic?
     def __init__(self, cache_timeout=3600*24):
         self.log = logging.getLogger()
@@ -33,21 +30,23 @@ class Dispatcher:
 
         cursor = self.conn.cursor()
         # todo: filter this down to due tasks in SQL if possible
-        result = cursor.execute("SELECT username, last_indexed_k, last_indexed_time "
-                                "FROM users "
-                                "WHERE unix_timestamp(last_indexed_time) + %s <= %s", (self.cache_timeout, now) )
-        print("User that neet scraping: %i" % len(result))
+        result = cursor.execute("""SELECT username, last_indexed_k, last_indexed_time
+                                    FROM users
+                                    WHERE unix_timestamp(last_indexed_time) + %s <= %s
+                                    LIMIT 1000""", (self.cache_timeout, now) )
+        print("User that need scraping: %i" % result)
 
         # todo: if filtering in SQL works then this should be unneccessary
         # return [row for row in result if row[2] + self.cache_timeout <= now]
-        return result
+        return cursor.fetchall()
 
     def dispatch_due_tasks(self):
-        due_users = self.getdue_users()
+        due_users = self.get_due_users()
 
         for row in due_users:
-            RpcScraper.dummy_scraper_task.delay(row[0], row[1])
+            dummy_scraper_task.delay(row[0], row[1])
 
 
-if __name__=='__main__':
-    pass
+if __name__ == '__main__':
+    dispatcher = Dispatcher()
+    dispatcher.dispatch_due_tasks()
