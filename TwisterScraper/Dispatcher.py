@@ -1,44 +1,46 @@
+import pymysql
+from LoginData import *
 from TwisterScraper import RpcScraper
+
+from datetime import datetime
+import logging
 
 __author__ = 'daan'
 
 from celery import Celery
 
-app = Celery('RpcScraper', broker='amqp://guest@localhost//')
+app = Celery('RpcScraper', broker=RABBITMQ_PUBLISHER_URL)
 
-@app.task
-def add(x, y):
-    return x + y
-
-from datetime import datetime
-import logging
-from cassandra import ConsistencyLevel
-from cassandra.cluster import Cluster
-from cassandra.query import SimpleStatement, BatchStatement
 
 class Dispatcher:
 
-    # todo: change this back to cluster = Cluster(['127.0.0.1]) once we figure out how to talk to the spotify cassandra docker container
     # todo: change the cache timeout to something more realistic?
-    def __init__(self, cassandra_urls=['172.17.0.4'], cache_timeout=3600*24):
-        log = logging.getLogger()
-        log.setLevel('DEBUG')
-        log.debug("Connect to cassandra...")
-        self.cluster = Cluster()
-        self.cassy = self.cluster.connect()
+    def __init__(self, cache_timeout=3600*24):
+        self.log = logging.getLogger()
 
-        self.cache_timeout = cache_timeout
+        self.cache_timeout =cache_timeout
+
+        self.log.debug("Connect to database...")
+        self.conn = pymysql.connect(
+            host=MYSQL_HOSTNAME,
+            port=MYSQL_PORT, user=MYSQL_USER,
+            passwd=MYSQL_PASSWORD,
+            db=MYSQL_DATABASE)
 
     def get_due_users(self):
 
         now = datetime.now().timestamp()
 
-        # todo: filter this down to due tasks in CQL if possible
-        result = self.cassy.execute("SELECT * FROM user_indexing_state WHERE ")
-        print("User Count: %i" % len(result))
+        cursor = self.conn.cursor()
+        # todo: filter this down to due tasks in SQL if possible
+        result = cursor.execute("SELECT username, last_indexed_k, last_indexed_time "
+                                "FROM users "
+                                "WHERE unix_timestamp(last_indexed_time) + %s <= %s", (self.cache_timeout, now) )
+        print("User that neet scraping: %i" % len(result))
 
-        # todo: if filtering in CQL works then this should be unneccessary
-        return [row for row in result if row[2] + self.cache_timeout <= now]
+        # todo: if filtering in SQL works then this should be unneccessary
+        # return [row for row in result if row[2] + self.cache_timeout <= now]
+        return result
 
     def dispatch_due_tasks(self):
         due_users = self.getdue_users()

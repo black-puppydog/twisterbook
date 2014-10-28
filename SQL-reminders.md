@@ -11,10 +11,15 @@ CREATE DATABASE twister;
 CREATE USER 'twister'@'%' IDENTIFIED BY '<pwtwister>';
 GRANT ALL ON twister.* TO 'twister'@'%';
 
+then disconnect from the database
+
+# connect as twister user
+mysql -h 127.0.0.1 -u twister --password=<pwtwister> twister
+
 # create tables
 CREATE TABLE users (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    username CHAR(20) CHARACTER SET utf8 COLLATE utf8_bin,
+    username CHAR(20) CHARACTER SET utf8 COLLATE utf8_bin UNIQUE,
     last_indexed_k INT,
     last_indexed_time TIMESTAMP,
     json MEDIUMTEXT CHARACTER SET utf8 COLLATE utf8_bin
@@ -25,18 +30,20 @@ CREATE TABLE posts (
     userid BIGINT,
     k INT,
     time TIMESTAMP NOT NULL,
-    ms CHAR(200) CHARACTER SET utf8 COLLATE utf8_bin,
+    msg CHAR(200) CHARACTER SET utf8 COLLATE utf8_bin,
     reply_to BIGINT NULL,
     rt_of BIGINT NULL,
     json MEDIUMTEXT CHARACTER SET utf8 COLLATE utf8_bin,
     FOREIGN KEY (userid) REFERENCES users(id),
     FOREIGN KEY (reply_to) REFERENCES posts(id),
-    FOREIGN KEY (rt_of) REFERENCES posts(id)
+    FOREIGN KEY (rt_of) REFERENCES posts(id),
+    UNIQUE unique_index(userid, k)
 );
 
 CREATE TABLE blocks(
     height BIGINT PRIMARY KEY,
     hash CHAR(65) NOT NULL,
-    user_registrations INT NOT NULL
+    user_registrations INT NOT NULL,
+    json TEXT NOT NULL
 );
 

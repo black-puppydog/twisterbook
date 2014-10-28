@@ -2,22 +2,17 @@
 
 import datetime
 import pymysql
+import simplejson
+import logging
+import sys
 
 __author__ = 'daan wynen'
 
 # This script should be called by the twisterd hook "blocknotify" to enter newly registered users into the the system
 
-import logging
-import sys
-
-log = logging.getLogger()
-log.setLevel('DEBUG')
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-log.addHandler(handler)
 
 
-from QBuilder.LoginData import *
+from LoginData import *
 
 
 def delete_all(db):
@@ -52,7 +47,8 @@ def main():
         host=MYSQL_HOSTNAME,
         port=MYSQL_PORT, user=MYSQL_USER,
         passwd=MYSQL_PASSWORD,
-        db=MYSQL_DATABASE)
+        db=MYSQL_DATABASE,
+        charset="utf8")
 
     # do a full scan if we don't get any hash
     if len(sys.argv) == 1 or sys.argv[1] == '--init':
@@ -70,21 +66,23 @@ def main():
         print("will scan from last known block up to the new block with hash %s" % block_hash)
         # todo: do that thing
 
+    if sys.argv[1] == '--only-block':
+        read_block(sys.argv[2], conn, twister)
+
 
 def read_block(block_hash, conn, twister):
 
     block = twister.getblock(block_hash)
-    print("Block height: %i" % block["height"], end='')
     usernames = block["usernames"]
+    print("Block height: %i contains %i user registrations." % (block["height"], len(usernames)))
 
     cur = conn.cursor()
     for u in usernames:
-        cur.execute("INSERT IGNORE INTO users(username, last_indexed_k, last_indexed_time, json) "
-                    "VALUES (%s,%s,%s,%s)", (u, -1, -1, "{}"))
-    cur.execute("INSERT IGNORE INTO blocks(height, hash, user_registrations) "
-                "VALUES (%s,%s,%s)", (int(block['height']), block_hash, len(usernames)))
+        cur.execute('INSERT IGNORE INTO users(username, last_indexed_k, last_indexed_time, json) '
+                    'VALUES ("%s",%s,%s,"%s")', (u, -1, "FROM_UNIXTIME(1)", "{}"))
+    cur.execute('INSERT IGNORE INTO blocks(height, hash, user_registrations, json) '
+                'VALUES (%s,"%s",%s,"%s")', (int(block['height']), block_hash, len(usernames), simplejson.dumps(block, use_decimal=True, encoding='utf8')))
     conn.commit()
-    print(" contains %i user registrations." % len(usernames))
     return block
 
 
@@ -103,5 +101,14 @@ def full_blockchain_scan(cassy, twister):
 
 
 if __name__ == "__main__":
+
+    # region setup logging
+    log = logging.getLogger()
+    log.setLevel('DEBUG')
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    log.addHandler(handler)
+    #endregion
+
     main()
 
