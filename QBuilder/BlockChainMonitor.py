@@ -92,8 +92,9 @@ def main():
     if sys.argv[1] == '--reset':
         delete_all(cassy)
 
-    block_hash = sys.argv[1]
-    print("got a new block with hash %s" % block_hash)
+    if sys.argv[1] == '--up-to-block':
+        block_hash = sys.argv[2]
+        print("will scan from last known block up to the new block with hash %s" % block_hash)
 
 
 def read_block(block_hash, cassy, twister):

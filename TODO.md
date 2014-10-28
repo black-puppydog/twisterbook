@@ -22,6 +22,7 @@
 
 * configure the dispatcher to run at scheduled intervals
 * how can we have persistent state (i.e. twister session) in a worker?
+    * necessary?
 
 ## Search and Indexing
 
@@ -31,6 +32,7 @@
         * lucene directly?
         * datastax API
             * student licenses?
+        * Solandra
 
 # Security
 
