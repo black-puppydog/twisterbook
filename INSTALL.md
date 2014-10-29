@@ -41,4 +41,4 @@ Start them with `celery -A TwisterScraper worker -l info`
 
 # Start Task Dispatcher
 Later-on we want this to happen on a regular basis, but so far we can just run the Dispatcher by hand:
-    ./Dispatcher.py
+    `./Dispatcher.py`
