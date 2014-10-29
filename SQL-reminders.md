@@ -1,6 +1,10 @@
 Some things I am too forgetful to remember.
 Probably not production ready, but for my local server it kinda works for now :P
 
+# pull docker repo and spin up the container
+docker pull mysql
+run --name twister-mysql -p 127.0.0.1:3306:3306 -e MYSQL_ROOT_PASSWORD=<pwroot> -d mysql
+
 # connect to database
 mysql -h 127.0.0.1 -u root --password=<pwroot>
 
