@@ -22,7 +22,7 @@ The Message queue qill be needed to distribute scraping tasks.
 
 # Source the right virtualenv
 This might be unneccessary/harmful for a docker container, but for a local PC it is a good idea.
-* or create a new virtualenv if needed:
+* create a new virtualenv if needed:
     * `virtualenv -p python3.3 twister-env`
     * then install the dependencies from requirements.txt
 * source the bin/activate from the virtualenv
