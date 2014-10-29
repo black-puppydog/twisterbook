@@ -79,9 +79,9 @@ def read_block(block_hash, conn, twister):
     cur = conn.cursor()
     for u in usernames:
         cur.execute('INSERT IGNORE INTO users(username, last_indexed_k, last_indexed_time, json) '
-                    'VALUES ("%s",%s,%s,"%s")', (u, -1, "FROM_UNIXTIME(1)", "{}"))
+                    'VALUES (%s,%s,%s,%s)', (u, -1, "FROM_UNIXTIME(1)", "{}"))
     cur.execute('INSERT IGNORE INTO blocks(height, hash, user_registrations, json) '
-                'VALUES (%s,"%s",%s,"%s")', (int(block['height']), block_hash, len(usernames), simplejson.dumps(block, use_decimal=True, encoding='utf8')))
+                'VALUES (%s,%s,%s,%s)', (int(block['height']), block_hash, len(usernames), simplejson.dumps(block, use_decimal=True, encoding='utf8')))
     conn.commit()
     return block
 

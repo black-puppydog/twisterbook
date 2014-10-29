@@ -30,11 +30,12 @@ class Dispatcher:
 
         cursor = self.conn.cursor()
         # todo: filter this down to due tasks in SQL if possible
-        result = cursor.execute("""SELECT username, last_indexed_k, last_indexed_time
+        result = cursor.execute("""SELECT username, id, last_indexed_k, last_indexed_time
                                     FROM users as u
                                     WHERE unix_timestamp(u.last_indexed_time) + %s <= %s
                                     ORDER BY u.last_indexed_time ASC, u.id DESC
-                                    LIMIT 4""", (self.cache_timeout, now) )
+                                    LIMIT 10000
+                                    """, (self.cache_timeout, now))
         print("User that need scraping: %i" % result)
 
         # todo: if filtering in SQL works then this should be unneccessary
@@ -45,7 +46,8 @@ class Dispatcher:
         due_users = self.get_due_users()
 
         for row in due_users:
-            dummy_scraper_task.delay(row[0], row[1])
+            # dummy_scraper_task(row[0], row[1], row[2])
+            dummy_scraper_task.delay(row[0], row[1], row[2])
 
 
 if __name__ == '__main__':

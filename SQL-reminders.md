@@ -29,14 +29,13 @@ CREATE TABLE posts (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     userid BIGINT,
     k INT,
+    post_type CHAR(6) NOT NULL,
     time TIMESTAMP NOT NULL,
     msg CHAR(200) CHARACTER SET utf8 COLLATE utf8_bin,
-    reply_to BIGINT NULL,
-    rt_of BIGINT NULL,
+    parent_post_username CHAR(16) NULL,
+    parent_post_k INT NULL,
     json MEDIUMTEXT CHARACTER SET utf8 COLLATE utf8_bin,
     FOREIGN KEY (userid) REFERENCES users(id),
-    FOREIGN KEY (reply_to) REFERENCES posts(id),
-    FOREIGN KEY (rt_of) REFERENCES posts(id),
     UNIQUE unique_index(userid, k)
 );
 

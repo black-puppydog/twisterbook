@@ -1,6 +1,9 @@
 from __future__ import absolute_import
 from datetime import datetime
 from bitcoinrpc.authproxy import AuthServiceProxy
+import pymysql
+import simplejson
+from LoginData import *
 from TwisterScraper.celery import app
 
 __author__ = 'daan'
@@ -9,9 +12,9 @@ __author__ = 'daan'
 
 
 @app.task
-def dummy_scraper_task(username, last_k):
+def dummy_scraper_task(username, userid, last_k):
     scraper = RpcScraper()
-    return scraper.refresh_user(username, last_k)
+    scraper.refresh_user(username, userid, last_k)
 
 
 class RpcScraper:
@@ -19,36 +22,35 @@ class RpcScraper:
         self.url = url
         self.twister = AuthServiceProxy(self.url)
 
-    def refresh_user(self, username, last_k):
+    def refresh_user(self, username, userid, last_k):
         profile = self.get_full_user_profile(username)
         new_posts = self.get_user_posts(username, last_k+1)
 
-        return profile, new_posts
+        self.write_to_db(username, userid, last_k, profile, new_posts)
 
     def get_user_posts(self, username, min_k):
         """gets all posts from a user for which k >= min_k"""
 
-        # get only the last post by the user to see the last k
-        d = self.twister.getposts(1, [{'username': username}])
-
-        # user has made no posts or the torrent cannot be reached.
-        # cannot really do anything about that atm.
-        if len(d) == 0:
+        latest_status = self.twister.dhtget(username, 'status', 's')
+        if not latest_status:
+            print('was unable to retrieve any post')
             return []
 
-        last_post = d[0]
+        latest_posting = latest_status[0]['p']['v']['userpost']
+        latest_k = latest_posting['k']
+        print("k=%i" % latest_k)
 
-        # there are no posts we don't already know or that we care about atm
-        if last_post['k'] < min_k:
+        if latest_k < min_k:
             return []
-        # we were lucky: there was exactly one new post
-        if last_post['k'] == min_k:
-            return [last_post]
 
-        # now we know the last k, so we can upper-bound the number of posts we need to retrieve
-        d = self.twister.getposts(last_post['k'] - min_k + 1, [{'username': username}])
-        result = [post for post in d if post['k'] >= min_k]
-        return result
+        results = [latest_posting]
+        for k in range(latest_k-1, min_k-1, -1):
+            posting_k = self.twister.dhtget(username, 'post%i' % k, 's')
+            if posting_k:
+                print("k=%i" % k)
+                results.append(posting_k[0]['p']['v']['userpost'])
+
+        return results
 
 
     def get_full_user_profile(self, u):
@@ -61,7 +63,7 @@ class RpcScraper:
             print("cannot print user info since Unicode error...")
         d = self.twister.dhtget(u, "profile", "s")
 
-        if len(d) == 1 and d[0].has_key("p") and d[0]["p"].has_key("v"):
+        if len(d) == 1 and 'p' in d[0] and 'v' in d[0]["p"]:
             for key in d[0]["p"]["v"]:
                 result[key] = d[0]["p"]["v"][key]
 
@@ -70,11 +72,11 @@ class RpcScraper:
         except UnicodeEncodeError:
             print("cannot print user info since Unicode error...")
         d = self.twister.dhtget(u, "avatar", "s")
-        if len(d) == 1 and d[0].has_key("p") and d[0]["p"].has_key("v"):
+        if len(d) == 1 and 'p' in d[0] and 'v' in d[0]["p"]:
             result['avatar'] = d[0]["p"]["v"]
 
         try:
-            print("getting following1 for %s ..." % u)
+            print("getting followings for %s ..." % u)
         except UnicodeEncodeError:
             print("cannot print user info since Unicode error...")
         result["following"] = set()
@@ -85,8 +87,67 @@ class RpcScraper:
             d = self.twister.dhtget(u, "following%i" % followingPage, "s")
             if len(d) == 1 and "p" in d[0] and "v" in d[0]["p"]:
                 result['following'] = result["following"].union(d[0]["p"]["v"])
+                print("got following%i" % followingPage)
+                followingPage += 1
             else:
                 break
         result['following'] = list(result['following'])
-        result["updated_time"] = datetime.now()
 
+        return result
+
+    def write_to_db(self, username, userid, last_k, profile, new_posts):
+
+        conn = pymysql.connect(
+            host=MYSQL_HOSTNAME,
+            port=MYSQL_PORT, user=MYSQL_USER,
+            passwd=MYSQL_PASSWORD,
+            db=MYSQL_DATABASE,
+            charset="utf8")
+
+        cursor = conn.cursor()
+
+        if new_posts:
+            new_k = max([p['k'] for p in new_posts])
+        else:
+            new_k = last_k
+        cursor.execute("UPDATE users set last_indexed_time=NOW(), last_indexed_k=%s, json=%s WHERE id=%s",
+                       (new_k, simplejson.dumps(profile, encoding='utf8', use_decimal=True), userid))
+
+        for post in new_posts:
+
+            k = post['k']
+
+            post_type = 'normal'
+            if 'rt' in post:
+                post_type = 'rt'
+            elif 'reply' in post:
+                post_type = 'reply'
+
+            time = post['time']
+
+            if post_type == 'rt':
+                msg = post['rt']['msg']
+            else:
+                msg = post['msg']
+
+            parent_post_username, parent_post_k = 'NULL', 'NULL'
+            if post_type != 'normal':
+                parent_post_username = post[post_type]['n']
+                parent_post_k = post[post_type]['k']
+
+            json = simplejson.dumps(post, encoding='utf8', use_decimal=True)
+
+            cursor.execute(
+                """INSERT IGNORE
+                  INTO posts(
+                  userid, k, post_type, time,
+                  msg, parent_post_username, parent_post_k, json)
+                  VALUES (%s,%s,%s,FROM_UNIXTIME(%s),%s,%s,%s,%s);""",
+                (userid, k, post_type, time,
+                  msg, parent_post_username, parent_post_k, json)
+            )
+
+        conn.commit()
+        conn.close()
+
+        print("Indexed %i new posts for user %s" % (len(new_posts), username))
