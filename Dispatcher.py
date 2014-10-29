@@ -33,8 +33,8 @@ class Dispatcher:
         result = cursor.execute("""SELECT username, id, last_indexed_k, last_indexed_time
                                     FROM users as u
                                     WHERE unix_timestamp(u.last_indexed_time) + %s <= %s
-                                    ORDER BY u.last_indexed_time ASC, u.id DESC
-                                    LIMIT 10000
+                                    ORDER BY u.last_indexed_time ASC, RAND()
+                                    LIMIT 1000
                                     """, (self.cache_timeout, now))
         print("User that need scraping: %i" % result)
 
