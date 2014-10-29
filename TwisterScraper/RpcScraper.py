@@ -1,5 +1,4 @@
 from __future__ import absolute_import
-from datetime import datetime
 from bitcoinrpc.authproxy import AuthServiceProxy
 import pymysql
 import simplejson
@@ -31,24 +30,64 @@ class RpcScraper:
     def get_user_posts(self, username, min_k):
         """gets all posts from a user for which k >= min_k"""
 
-        latest_status = self.twister.dhtget(username, 'status', 's')
+        # this should never happen, but just to be sure:
+        if min_k < 0:
+            raise ValueError("min_k crucially has to be non-negative!")
+
+        # get the user's latest posting. this acts as an entry point to go backwards
+        latest_status = self.twister.dhtget(username, 'status', 's', 2000)
+
+        # if cannot even get the latest posting, then it makes little sense to keep trying
         if not latest_status:
             print('was unable to retrieve any post')
             return []
 
+        # check out which number the last posting has
         latest_posting = latest_status[0]['p']['v']['userpost']
         latest_k = latest_posting['k']
         print("k=%i" % latest_k)
 
+        # if it is too old, we are already done!
         if latest_k < min_k:
             return []
-
         results = [latest_posting]
-        for k in range(latest_k-1, min_k-1, -1):
-            posting_k = self.twister.dhtget(username, 'post%i' % k, 's')
-            if posting_k:
-                print("k=%i" % k)
-                results.append(posting_k[0]['p']['v']['userpost'])
+
+        # now start going back in time as the posts tell us
+        # start from the k referenced in the latest post, defaulting to last_k-1
+        if 'lastk' in latest_posting:
+            last_referenced_k = latest_posting['lastk']
+        else:
+            last_referenced_k = latest_k-1
+
+        while last_referenced_k >= min_k:
+
+            finished = True
+
+            # given a last_referenced_k that we believe to hold a post...
+            for k in range(last_referenced_k, min_k-1, -1):
+
+                # ... get that post. give some extra time if we really expect this to be successful
+                posting_k = self.twister.dhtget(username, 'post%i' % k, 's', 2000 if k == last_referenced_k else 1000)
+
+                # and if it exists, break the loop, using the explicitely referenced lastk instead
+                if posting_k:
+                    print("k=%i" % k)
+                    results.append(posting_k[0]['p']['v']['userpost'])
+                    if ['lastk'] in posting_k:
+                        last_referenced_k = posting_k['lastk']
+                    else:
+                        # just in case we don't have a lastk, default to decrementing by one again
+                        last_referenced_k = k - 1
+
+                    # got a new k, so we need to keep going
+                    finished = False
+                    break
+                else:
+                    print("failed to get k=%i, being more impatient now" % k)
+
+            # this is only true if we finished that for loop, i.e. if we tried all interesting k's
+            if finished:
+                break
 
         return results
 
@@ -61,7 +100,7 @@ class RpcScraper:
             print("getting profile for %s ..." % u)
         except UnicodeEncodeError:
             print("cannot print user info since Unicode error...")
-        d = self.twister.dhtget(u, "profile", "s")
+        d = self.twister.dhtget(u, "profile", "s", 2000)
 
         if len(d) == 1 and 'p' in d[0] and 'v' in d[0]["p"]:
             for key in d[0]["p"]["v"]:
@@ -71,7 +110,7 @@ class RpcScraper:
             print("getting avatar for %s ..." % u)
         except UnicodeEncodeError:
             print("cannot print user info since Unicode error...")
-        d = self.twister.dhtget(u, "avatar", "s")
+        d = self.twister.dhtget(u, "avatar", "s", 2000)
         if len(d) == 1 and 'p' in d[0] and 'v' in d[0]["p"]:
             result['avatar'] = d[0]["p"]["v"]
 
@@ -84,7 +123,7 @@ class RpcScraper:
         # following is paged, so we try until one of the pages is empty.
         followingPage = 1
         while True:
-            d = self.twister.dhtget(u, "following%i" % followingPage, "s")
+            d = self.twister.dhtget(u, "following%i" % followingPage, "s", 2000)
             if len(d) == 1 and "p" in d[0] and "v" in d[0]["p"]:
                 result['following'] = result["following"].union(d[0]["p"]["v"])
                 print("got following%i" % followingPage)
