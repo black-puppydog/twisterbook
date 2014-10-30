@@ -50,11 +50,11 @@ This is very specific to my folder structure atm, but really it's just the "../t
 Make a new DigitalOcean server with Docker, pull the twister image and start an instance.
 Or clone the twister-core git repository and user the `twister-on-docker` script.
 
-we need to farward the two ports for the rabbitMQ and the MySQL servers because we didn't bother to make them secure. Instead, we just limited them so that they only accept local connections.
-So we create an ssh kaypair *without a passphrase* on the worker node, and copy the publick key into the `~/.ssh/authorized_keys`.
+we need to forward the two ports for the rabbitMQ and the MySQL servers because we didn't bother to make them secure. Instead, we just limited them so that they only accept local connections.
+So we create an ssh keypair *without a passphrase* on the worker node, and copy the publick key into the `~/.ssh/authorized_keys`.
 Then we forward the ports with
-* `ssh root<database_server> -L 5672:localhost:5672 -N`
-* `ssh root<database_server> -L 3306:localhost:3306 -N`
+* `ssh -f root<database_server> -L 5672:localhost:5672 -N`
+* `ssh -f root<database_server> -L 3306:localhost:3306 -N`
 
 Finally, we start the workers with `C_FORCE_ROOT` set to make celery accept that we are root.
 * `C_FORCE_ROOT=1 celery -A TwisterScraper worker -l info`
