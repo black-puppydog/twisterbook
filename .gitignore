@@ -17,3 +17,5 @@ sandbox.py
 
 # sensitive data
 LoginData.py
+
+id_rsa*
