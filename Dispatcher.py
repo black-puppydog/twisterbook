@@ -37,12 +37,12 @@ class Dispatcher:
         now = datetime.now().timestamp()
 
         cursor = self.conn.cursor()
-        # todo: filter this down to due tasks in SQL if possible
         result = cursor.execute("""(SELECT username, id, last_indexed_k, last_indexed_time
                                     FROM users as u
-                                    WHERE unix_timestamp(u.last_indexed_time) + %s <= %s
+                                    WHERE (unix_timestamp(u.last_indexed_time) + %s <= %s AND last_indexed_k > -1) -- active users refresh
+                                      OR  unix_timestamp(u.last_indexed_time) < 10 -- new user
                                     ORDER BY u.last_indexed_time ASC, RAND()
-                                    LIMIT 1000)
+                                    LIMIT 10000)
                                     UNION
                                     (SELECT username, id, last_indexed_k, last_indexed_time
                                     FROM users AS u
@@ -53,8 +53,6 @@ class Dispatcher:
                                     """, (self.cache_timeout, now, self.rescrape_timeout, now))
         print("User that need scraping: %i" % result)
 
-        # todo: if filtering in SQL works then this should be unneccessary
-        # return [row for row in result if row[2] + self.cache_timeout <= now]
         return cursor.fetchall()
 
     def dispatch_due_tasks(self):
