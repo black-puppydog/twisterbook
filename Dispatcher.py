@@ -12,7 +12,7 @@ __author__ = 'daan'
 
 class Dispatcher:
     # todo: change the cache timeout to something more realistic?
-    def __init__(self, cache_timeout=3600 * 24, rescrape_timeout=3600 * 21):
+    def __init__(self, cache_timeout=3600 * 1, rescrape_timeout=3600 * 21):
         """
 
         :param cache_timeout: how long to wait until we try to pull new posts from soneone we already have posts of
