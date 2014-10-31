@@ -15,7 +15,10 @@ sandbox.py
 # pycharm
 .idea/*
 
-# sensitive data
-LoginData.py
+# for prevention of sloppy mistakes
+*id_rsa*
 
-id_rsa*
+*env-file.txt
+
+# somehow I always manage to get core dumps into my directory from killing twisterd :P
+core
