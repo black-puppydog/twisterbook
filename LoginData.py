@@ -4,7 +4,8 @@ import os
 __author__ = 'daan'
 
 # this just pulls the login data from the corresponding environment variables
-# usernames and the default dockered twister login data are not considered sensitive enough to protect, so see below for their defaults :)
+# usernames and the default dockered twister login data are
+# not considered sensitive enough to protect, so see below for their defaults :)
 
 MYSQL_HOSTNAME = "127.0.0.1"
 MYSQL_USER = 'twister'
