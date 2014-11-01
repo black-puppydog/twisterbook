@@ -1,10 +1,11 @@
 #! /bin/sh
 
-WORKER_IP=$1
+export WORKER_IP=$1
 
 ssh root@$WORKER_IP "docker stop scraping-worker"
-
 ssh root@$WORKER_IP "docker rm scraping-worker"
+
+ssh root@$WORKER_IP "mkdir /worker-build"
 
 scp -r id_rsa id_rsa.pub Dockerfile env-file.txt envlistWrapper setup.sh start_scraper.sh TwisterScraper/ LoginData.py "$WORKER_IP:/worker-build/"
 
