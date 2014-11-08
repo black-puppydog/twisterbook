@@ -26,5 +26,5 @@ echo "-----SSH PUBLIC KEY FOR SERVER CHECK THIS!-----"
 ssh-keyscan $1 | tee /root/.ssh/known_hosts
 echo "-----------------------------------------------"
 
-docker build -t worker .
+docker pull blackpuppydog/twister-worker
 docker run -d --name scraping-worker -v /root/.ssh/:/root/.ssh/ -e "DB_SERVER=$1" --env-file=env-file.txt --link twister:twister worker
