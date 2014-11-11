@@ -1,114 +1,97 @@
 #! /usr/bin/env python
 
-import datetime
-import pymysql
+from datetime import datetime
+from cassandra import ConsistencyLevel
+from cassandra.cluster import Cluster
+from cassandra.query import BatchStatement
 import simplejson
-import logging
 import sys
+from cassandra_queries import *
+from bitcoinrpc.authproxy import AuthServiceProxy
+
+
+# region setup logging
+log = logging.getLogger()
+log.setLevel('DEBUG')
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+log.addHandler(handler)
+#endregion
 
 __author__ = 'daan wynen'
 
 # This script should be called by the twisterd hook "blocknotify" to enter newly registered users into the the system
 
 
+class BlockChainMonitor:
 
-from LoginData import *
+    def __init__(self, url="http://user:pwd@127.0.0.1:28332", cassy_nodes=['127.0.0.1']):
+        self.url = url
+        self.twister = AuthServiceProxy(self.url)
 
+        log.debug("Connect to cassandra...")
+        cluster = Cluster(cassy_nodes)
+        self.cassy = cluster.connect()
+        setup_cassandra_schema(self.cassy)
 
-def delete_all(db):
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM posts;")
-    cursor.execute("DELETE FROM blocks;")
-    cursor.execute("DELETE FROM users;")
-    db.commit()
+        self.insert_user = self.cassy.prepare(CQL_INSERT_USER_CONSERVATIVE)
+        self.insert_block = self.cassy.prepare(CQL_INSERT_BLOCK)
 
-def print_db_stats(db):
-    cursor = db.cursor()
-    result = cursor.execute("SELECT COUNT(*) FROM users")
-    print("User Count: %i" % result[0])
+    def full_blockchain_scan(self):
 
-    # todo: fix this shit!
-    bh = cursor.execute("SELECT * FROM last_scanned_block")[0]
-    print("Last scanned block: %s" % bh[1])
+        nextHash = self.twister.getblockhash(0)
+
+        while True:
+            block = self.read_block(nextHash)
+
+            # continue with next block?
+            if "nextblockhash" in block:
+                nextHash = block["nextblockhash"]
+            else:
+                break
+
+    def read_block(self, block_hash):
+
+        block = self.twister.getblock(block_hash)
+        usernames = block["usernames"]
+
+        if usernames:
+            print("Block height: %i contains %i user registrations." % (block["height"], len(usernames)))
+
+        for u in usernames:
+            json = {'username': u, 'following': []}
+            json = simplejson.dumps(json, encoding='utf8', use_decimal=True)
+            self.cassy.execute(self.insert_user, (u, None, None, None, None, None, [], -1, datetime.utcfromtimestamp(1), json))
+
+        height = int(block['height'])
+        user_registrations = len(usernames)
+        new_users = set(usernames)
+        username = block['spamUser']
+        spam_msg = block['spamMessage']
+        block_json = simplejson.dumps(block, encoding='utf8', use_decimal=True)
+        self.cassy.execute(self.insert_block, (height, block_hash, user_registrations, new_users, username, spam_msg, block_json))
+
+        return block
 
 
 def main():
-    try:
-        from bitcoinrpc.authproxy import AuthServiceProxy
-    except ImportError as exc:
-        sys.stderr.write("Error: install python-bitcoinrpc (https://github.com/jgarzik/python-bitcoinrpc)\n")
-        exit(-1)
 
-    log.debug("Creating twister connection...")
-    twister = AuthServiceProxy(TWISTER_RPC_URL)
-
-    log.debug("Connect to database...")
-    conn = pymysql.connect(
-        host=MYSQL_HOSTNAME,
-        port=MYSQL_PORT, user=MYSQL_USER,
-        passwd=MYSQL_PASSWORD,
-        db=MYSQL_DATABASE,
-        charset="utf8")
+    mon = BlockChainMonitor()
 
     # do a full scan if we don't get any hash
     if len(sys.argv) == 1 or sys.argv[1] == '--init':
-        full_blockchain_scan(conn, twister)
+        mon.full_blockchain_scan()
         return
-
-    if sys.argv[1] == '--stats':
-        print_db_stats(conn)
-
-    if sys.argv[1] == '--reset':
-        delete_all(conn)
 
     if sys.argv[1] == '--up-to-block':
         block_hash = sys.argv[2]
         print("will scan from last known block up to the new block with hash %s" % block_hash)
         # todo: do that thing
+        raise NotImplementedError("soon to come?")
 
     if sys.argv[1] == '--only-block':
-        read_block(sys.argv[2], conn, twister)
-
-
-def read_block(block_hash, conn, twister):
-
-    block = twister.getblock(block_hash)
-    usernames = block["usernames"]
-    print("Block height: %i contains %i user registrations." % (block["height"], len(usernames)))
-
-    cur = conn.cursor()
-    for u in usernames:
-        cur.execute('INSERT IGNORE INTO users(username, last_indexed_k, last_indexed_time, json) '
-                    'VALUES (%s,%s,%s,%s)', (u, -1, "FROM_UNIXTIME(1)", "{}"))
-    cur.execute('INSERT IGNORE INTO blocks(height, hash, user_registrations, json) '
-                'VALUES (%s,%s,%s,%s)', (int(block['height']), block_hash, len(usernames), simplejson.dumps(block, use_decimal=True, encoding='utf8')))
-    conn.commit()
-    return block
-
-
-def full_blockchain_scan(cassy, twister):
-
-    nextHash = twister.getblockhash(0)
-
-    while True:
-        block = read_block(nextHash, cassy, twister)
-
-        # continue with next block?
-        if "nextblockhash" in block:
-            nextHash = block["nextblockhash"]
-        else:
-            break
-
+        mon.read_block(sys.argv[2])
 
 if __name__ == "__main__":
-
-    # region setup logging
-    log = logging.getLogger()
-    log.setLevel('DEBUG')
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-    log.addHandler(handler)
-    #endregion
-
     main()
 

@@ -1,18 +1,17 @@
 #! /usr/bin/env python
 
-import pymysql
-from LoginData import *
-
-from datetime import datetime
+from cassandra.cluster import Cluster
+from datetime import datetime, timedelta
 import logging
 from TwisterScraper.RpcScraper import dummy_scraper_task
+from cassandra_queries import setup_cassandra_schema
 
 __author__ = 'daan'
 
 
 class Dispatcher:
     # todo: change the cache timeout to something more realistic?
-    def __init__(self, cache_timeout=3600 * 1, rescrape_timeout=3600 * 21):
+    def __init__(self, cache_timeout=3600 * 24, rescrape_timeout=3600 * 21, cassy_nodes=['127.0.0.1']):
         """
 
         :param cache_timeout: how long to wait until we try to pull new posts from soneone we already have posts of
@@ -24,43 +23,30 @@ class Dispatcher:
         self.rescrape_timeout = rescrape_timeout
         self.log = logging.getLogger()
 
-        self.cache_timeout = cache_timeout
+        self.log.debug("Connect to cassandra...")
+        cluster = Cluster(cassy_nodes)
+        self.cassy = cluster.connect()
+        setup_cassandra_schema(self.cassy)
 
-        self.log.debug("Connect to database...")
-        self.conn = pymysql.connect(
-            host=MYSQL_HOSTNAME,
-            port=MYSQL_PORT, user=MYSQL_USER,
-            passwd=MYSQL_PASSWORD,
-            db=MYSQL_DATABASE)
+        self.cache_timeout = timedelta(seconds=cache_timeout)
+        self.due_query = self.cassy.prepare("SELECT username, highest_k_indexed, last_update_time FROM user LIMIT 1000000")
 
     def get_due_users(self):
-        now = datetime.now().timestamp()
+        due_users = list(self.cassy.execute(self.due_query))
+        print('retrieved %i users from db' % len(due_users))
+        due_users = [row for row in due_users if row[2]+self.cache_timeout < datetime.utcnow()]
+        print('%i users due' % len(due_users))
 
-        cursor = self.conn.cursor()
-        result = cursor.execute("""(SELECT username, id, last_indexed_k, last_indexed_time
-                                    FROM users as u
-                                    WHERE (unix_timestamp(u.last_indexed_time) + %s <= %s AND last_indexed_k > -1) -- active users refresh
-                                      OR  unix_timestamp(u.last_indexed_time) < 10 -- new user
-                                    ORDER BY u.last_indexed_time ASC, RAND()
-                                    LIMIT 10000)
-                                    UNION
-                                    (SELECT username, id, last_indexed_k, last_indexed_time
-                                    FROM users AS u
-                                    WHERE unix_timestamp(u.last_indexed_time) >100 -- we tried this user before
-                                      AND u.last_indexed_k = -1
-                                      AND unix_timestamp(u.last_indexed_time) + %s <= %s
-                                    LIMIT 2000);
-                                    """, (self.cache_timeout, now, self.rescrape_timeout, now))
-        print("User that need scraping: %i" % result)
+        return due_users
 
-        return cursor.fetchall()
+
 
     def dispatch_due_tasks(self):
         due_users = self.get_due_users()
 
         for row in due_users:
             # dummy_scraper_task(row[0], row[1], row[2])
-            dummy_scraper_task.delay(row[0], row[1], row[2])
+            dummy_scraper_task(row[0], row[1])
 
 
 if __name__ == '__main__':
