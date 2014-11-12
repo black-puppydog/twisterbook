@@ -46,7 +46,7 @@ class Dispatcher:
 
         for row in due_users:
             # dummy_scraper_task(row[0], row[1], row[2])
-            dummy_scraper_task(row[0], row[1])
+            dummy_scraper_task.delay(row[0], row[1])
 
 
 if __name__ == '__main__':
