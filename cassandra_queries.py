@@ -65,6 +65,13 @@ CQL_INSERT_USER = \
     json)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
+CQL_INSERT_NEW_K = \
+"""INSERT INTO user (
+    username,
+    highest_k_indexed,
+    last_update_time)
+VALUES (?, ?, ?)"""
+
 CQL_INSERT_USER_CONSERVATIVE = \
 """INSERT INTO user (
     username,

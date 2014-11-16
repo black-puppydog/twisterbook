@@ -42,24 +42,35 @@ class RpcScraper:
         self.insert_post = self.cassy.prepare(CQL_INSERT_POST)
         self.insert_reply = self.cassy.prepare(CQL_INSERT_REPLY)
         self.insert_user = self.cassy.prepare(CQL_INSERT_USER)
+        self.insert_new_k = self.cassy.prepare(CQL_INSERT_NEW_K)
         self.insert_retransmit = self.cassy.prepare(CQL_INSERT_RETRANSMIT)
         self.insert_hashtag = self.cassy.prepare(CQL_INSERT_HASHTAG)
         self.insert_mention = self.cassy.prepare(CQL_INSERT_MENTION)
 
-    def refresh_user(self, username, last_k):
-        profile = self.get_full_user_profile(username)
+    def refresh_user(self, username, last_k, posts_only=False):
+        if posts_only:
+            profile = None
+        else:
+            profile = self.get_full_user_profile(username)
         new_posts = self.get_user_posts_greater_than(username, last_k + 1)
 
         self.write_to_db(username, last_k, profile, new_posts)
 
     def write_to_db(self, username, last_k, profile, new_posts):
 
+        if not profile and not new_posts:
+            return
+
         new_k = max([p['k'] for p in new_posts]) if new_posts else last_k
 
-        self.save_user(username, new_k, profile)
-
+        # save posts first, only after that update the k value for the user
         for post in new_posts:
             self.save_post(post)
+
+        if profile:
+            self.save_user(username, new_k, profile)
+        else:
+            self.save_new_k(username, new_k)
 
         log.info("indexed %i new posts for user %s" % (len(new_posts), username))
 
@@ -174,6 +185,12 @@ class RpcScraper:
                             new_k,
                             datetime.utcnow() if not time else time,
                             json))
+
+    def save_new_k(self, username, new_k, time=None):
+        self.cassy.execute(self.insert_new_k,
+                           (username,
+                            new_k,
+                            datetime.utcnow() if not time else time))
 
     def get_full_user_profile(self, u):
 
