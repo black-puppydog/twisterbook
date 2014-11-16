@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from datetime import datetime
+import time
 import re
 from bitcoinrpc.authproxy import AuthServiceProxy
 import simplejson
@@ -107,62 +108,44 @@ class RpcScraper:
         if min_k < 0:
             raise ValueError("min_k crucially has to be non-negative!")
 
+        self.twister.follow('black_puppydog', [username])
+
         # get the user's latest posting. this acts as an entry point to go backwards
-        latest_status = self.twister.dhtget(username, 'status', 's', 2000)
+        latest_status = self.twister.dhtget(username, 'status', 's', 10000)
 
         # if cannot even get the latest posting, then it makes little sense to keep trying
         if not latest_status:
-            print('was unable to retrieve any post')
+            try:
+                print('was unable to retrieve any post for %s' % username)
+            except UnicodeEncodeError:
+                print("was unable to retrieve any post for unicoded user")
             return []
 
         # check out which number the last posting has
         latest_posting = latest_status[0]['p']['v']['userpost']
         latest_k = latest_posting['k']
-        print("k=%i" % latest_k)
+        try:
+            print("lastk = %i for %s: %s" %
+                  (latest_k,
+                   username,
+                   'nothing new' if latest_k < min_k else ('{0} potentially new posts!'.format(latest_k - min_k + 1))))
+        except UnicodeEncodeError:
+            print("lastk = %i for unicoded user: %s " %
+                  (latest_k,
+                 'nothing new' if latest_k < min_k else ('{0} potentially new posts!'.format(latest_k - min_k + 1))))
 
         # if it is too old, we are already done!
         if latest_k < min_k:
             return []
         results = [latest_posting]
 
-        # now start going back in time as the posts tell us
-        # start from the k referenced in the latest post, defaulting to last_k-1
-        if 'lastk' in latest_posting:
-            last_referenced_k = latest_posting['lastk']
-        else:
-            last_referenced_k = latest_k - 1
+        # give torrent more time to load pieces
+        time.sleep(60)
 
-        while last_referenced_k >= min_k:
+        print('getting posts from torrent...')
+        results = self.twister.getposts(latest_k - min_k + 1, [{'username': username, 'max_id': latest_k, 'min_id': min_k}])
 
-            finished = True
-
-            # given a last_referenced_k that we believe to hold a post...
-            for k in range(last_referenced_k, min_k - 1, -1):
-
-                # ... get that post. give some extra time if we really expect this to be successful
-                posting_k = self.twister.dhtget(username, 'post%i' % k, 's', 2000 if k == last_referenced_k else 1000)
-
-                # and if it exists, break the loop, using the explicitely referenced lastk instead
-                if posting_k:
-                    print("k=%i" % k)
-                    results.append(posting_k[0]['p']['v']['userpost'])
-                    if ['lastk'] in posting_k:
-                        last_referenced_k = posting_k['lastk']
-                    else:
-                        # just in case we don't have a lastk, default to decrementing by one again
-                        last_referenced_k = k - 1
-
-                    # got a new k, so we need to keep going
-                    finished = False
-                    break
-                else:
-                    print("failed to get k=%i, being more impatient now" % k)
-
-            # this is only true if we finished that for loop, i.e. if we tried all interesting k's
-            if finished:
-                break
-
-        return list(results)
+        return list([json['userpost'] for json in results])
 
     def save_user(self, username, new_k, json, time=None):
 
