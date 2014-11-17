@@ -32,7 +32,10 @@ def dummy_scraper_task(username, last_k):
 class RpcScraper:
     def __init__(self, url="http://user:pwd@127.0.0.1:28332", cassy_nodes=['127.0.0.1']):
         self.url = url
-        self.twister = AuthServiceProxy(self.url)
+        self.twister = AuthServiceProxy(
+            self.url,
+            timeout=120  # we want to be able to do long-running queries
+        )
 
         log.debug("Connect to cassandra...")
         cluster = Cluster(cassy_nodes)
@@ -144,6 +147,7 @@ class RpcScraper:
 
         print('getting posts from torrent...')
         results = self.twister.getposts(latest_k - min_k + 1, [{'username': username, 'max_id': latest_k, 'min_id': min_k}])
+        self.twister.unfollow('black_puppydog', [username])
 
         return list([json['userpost'] for json in results])
 
