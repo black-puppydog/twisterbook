@@ -111,6 +111,9 @@ class RpcScraper:
         if min_k < 0:
             raise ValueError("min_k crucially has to be non-negative!")
 
+        # todo: simultaneously start dht pulls, then merge results!
+        # extra sophistication: dhtput any posts that have been dropped from the dht...? :P
+
         self.twister.follow('black_puppydog', [username])
 
         # get the user's latest posting. this acts as an entry point to go backwards

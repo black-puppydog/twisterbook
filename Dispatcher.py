@@ -34,7 +34,11 @@ class Dispatcher:
     def get_due_users(self):
         due_users = list(self.cassy.execute(self.due_query))
         print('retrieved %i users from db' % len(due_users))
-        due_users = [row for row in due_users if row[1]>=0 and row[2]+self.cache_timeout < datetime.utcnow()]
+        due_users = [row for row in due_users
+                     if row[2]+self.cache_timeout < datetime.utcnow()]
+        # due_users = [row for row in due_users
+        #              if (row[1] >= 0 and row[2]+self.cache_timeout < datetime.utcnow())
+        #              or row[2] < datetime.utcfromtimestamp(1000)]
         print('%i users due' % len(due_users))
 
         return due_users
