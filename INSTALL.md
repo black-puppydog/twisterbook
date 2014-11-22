@@ -1,11 +1,6 @@
 Since there are a bunch of components to install and I don't have the necessary know-how (yet) to automate all of this, here are a bunch of steps that are necessary.
 Let's hope I don't forget anything non-obvious...
 
-# MySQL
-MySQL will hold the scraped posts and profiles for now.
-Later I would like to use a proper full text search engine for this, probably SolR with a cassandra backend, i.e. Solandra.
-* Enter the commands from SQL-reminders.md
-
 # RabbitMQ
 The Message queue will be needed to distribute scraping tasks.
 * set up the docker from dockerfile/rabbitmq or install locally
@@ -22,7 +17,8 @@ The Message queue will be needed to distribute scraping tasks.
     * delete guest account
 * create new user taskPublisher
     * give it all permissions on the queue-regex "scraping"
-    * enter the taskPublisher and its password into LoginData.py
+    * enter the taskPublisher and its password into the env-file.txt file that the envlistWrapper uses:
+        * RABBITMQ_PASSWORD=<pw>
 
 # Source the right virtualenv
 This might be unneccessary/harmful for a docker container, but for a local PC it is a good idea.
@@ -31,34 +27,23 @@ This might be unneccessary/harmful for a docker container, but for a local PC it
 * source the bin/activate from the virtualenv
 * then install the dependencies from requirements.txt:
     * `pip install -r requirements.txt`
-    * **todo: this will give a warning because we cannot compile simplecson in C which libs are needed?**
+    * **todo: this will give a warning because we cannot compile simplecson in C. which libs are needed?**
 
-# start the monitoring twisterd
-Since we want the "newblock" callback from twisterd, we cannot user the container verbatim. At a later stage I should make a new container based off the official one. For now, we need to compile twister from scratch.
-* go to `twister-core` folder and follow the install instructions from the `doc/` folder
-    * on DigitalOcean there seems to be a problem with the locale `LC_ALL`, it needs to be properly set in `/etc/environment`
-
-Now we start the twister daemon.
+# Start the twister daemon with user registration callback
 This is very specific to my folder structure atm, but really it's just the "../twister-core" prefix that would need changing.
-* Start the script `./twisterWithMonitor.sh`.
+* Start the script `./envlistWrapper ./twisterWithMonitor.sh`.
     * This starts twisterd with the callback script "BlockChainMonitor.py --only-block %s" which means that every new block will automatically be entered into the database.
 * *Now* we can start the initial import process for the existing users:
     * `./BlockChainMonitor.py`
     * This can be done as often as it pleases us, since it does not change existing users.
+    * If you suspect there might be a block missing from the database, there is the --only-block option which takes a single hash value as an argument
 
-# Start Workers
-Make a new DigitalOcean server with Docker, pull the twister image and start an instance.
-Or clone the twister-core git repository and user the `twister-on-docker` script.
-
-we need to forward the two ports for the rabbitMQ and the MySQL servers because we didn't bother to make them secure. Instead, we just limited them so that they only accept local connections.
-So we create an ssh keypair *without a passphrase* on the worker node, and copy the publick key into the `~/.ssh/authorized_keys`.
-Then we forward the ports with
-* `ssh -f root<database_server> -L 5672:localhost:5672 -N`
-* `ssh -f root<database_server> -L 3306:localhost:3306 -N`
-
-Finally, we start the workers with `C_FORCE_ROOT` set to make celery accept that we are root.
-* `C_FORCE_ROOT=1 celery -A TwisterScraper worker -l info`
+# Start Workers locally
+`./envlistWrapper celery -c 10 -A TwisterScraper worker -l info`
+This uses 10 workers, which only works when using the torrent scraping method.
+For DHT scraping this would likely lock up the daemon very quickly so use a smaller number, like 2 or 3 per scraper. Not sure yet how to choose this well or why the daemon locks up in the first place.
 
 # Start Task Dispatcher
 Later-on we want this to happen on a regular basis, but so far we can just run the Dispatcher by hand:
-    `./Dispatcher.py`
+`./envlistWrapper ./Dispatcher.py`
+This will (at the moment) only refresh already known-active users and new users.
