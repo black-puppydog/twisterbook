@@ -195,8 +195,10 @@ CQL_CREATE_TABLE_BLOCK = \
 
 #endregion
 
-log = logging.getLogger()
-log.setLevel('DEBUG')
+log = logging.getLogger('cassy')
+log.setLevel('INFO')
+log = logging.getLogger('cassandra')
+log.setLevel('INFO')
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 log.addHandler(handler)

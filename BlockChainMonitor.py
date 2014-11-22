@@ -11,8 +11,8 @@ from bitcoinrpc.authproxy import AuthServiceProxy
 
 
 # region setup logging
-log = logging.getLogger()
-log.setLevel('DEBUG')
+log = logging.getLogger('BCMonitor')
+log.setLevel('INFO')
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 log.addHandler(handler)
